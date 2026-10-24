@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="MedRescue — Intelligent medicine redistribution system to reduce expiry waste across healthcare facilities">
+    <title>MedRescue — Reduce Medicine Expiry Waste</title>
+    <link rel="stylesheet" href="/styles.css?v=2">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏥</text></svg>">
+</head>
+<body>
+
+<div class="app-layout">
+    <!-- ═══ Sidebar ═══ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">💊</div>
+            <div class="brand-text">
+                <h1>MedRescue</h1>
+                <span>Medicine network</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-section-title">Overview</div>
+                <button class="nav-item active" type="button" data-page="dashboard" id="nav-dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span>Dashboard</span>
+                </button>
+                <button class="nav-item" type="button" data-page="transfers" id="nav-transfers">
+                    <span class="nav-icon">🔄</span>
+                    <span>Transfers</span>
+                    <span class="nav-badge" id="transfer-count-badge">0</span>
+                </button>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">Infrastructure</div>
+                <button class="nav-item" type="button" data-page="facilities" id="nav-facilities">
+                    <span class="nav-icon">🏥</span>
+                    <span>Facilities</span>
+                </button>
+                <button class="nav-item" type="button" data-page="network" id="nav-network">
+                    <span class="nav-icon">🌐</span>
+                    <span>Network Graph</span>
+                </button>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">DSA Visualizations</div>
+                <button class="nav-item" type="button" data-page="heap" id="nav-heap">
+                    <span class="nav-icon">⏱️</span>
+                    <span>Expiry Heap</span>
+                </button>
+                <button class="nav-item" type="button" data-page="algorithms" id="nav-algorithms">
+                    <span class="nav-icon">⚡</span>
+                    <span>Algorithm Compare</span>
+                </button>
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="dsa-badge">
+                <span class="dot"></span>
+                <span>Engine Active — All Systems Go</span>
+            </div>
+        </div>
+    </aside>
+    <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="Close navigation"></button>
+
+    <!-- ═══ Main Content ═══ -->
+    <main class="main-content">
+        <!-- Top Bar -->
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="menu-btn" id="menuBtn" type="button" aria-label="Open navigation" aria-expanded="false">☰</button>
+                <h2 class="page-title" id="pageTitle">Dashboard</h2>
+            </div>
+            <div class="topbar-right">
+                <div class="algo-toggle">
+                    <button class="algo-btn active" id="btn-bipartite" onclick="switchAlgorithm('bipartite')">Bipartite Match</button>
+                    <button class="algo-btn" id="btn-greedy" onclick="switchAlgorithm('greedy')">Greedy Alloc</button>
+                </div>
+                <button class="refresh-btn" id="refreshBtn" onclick="refreshData()" title="Refresh data" aria-label="Refresh data">↻</button>
+            </div>
+        </header>
+
+        <!-- ═══ PAGE: Dashboard ═══ -->
+        <div class="page active" id="page-dashboard">
+            <!-- Stats -->
+            <div class="stats-grid" id="statsGrid">
+                <!-- Populated by JS -->
+            </div>
+
+            <div class="grid-2">
+                <!-- Expiry Timeline Chart -->
+                <div class="card">
+                    <div class="section-title">
+                        <span class="icon">📅</span>
+                        Expiry Timeline
+                    </div>
+                    <div class="bar-chart" id="expiryChart"></div>
+                </div>
+
+                <!-- Category Breakdown -->
+                <div class="card">
+                    <div class="section-title">
+                        <span class="icon">📦</span>
+                        Category Breakdown
+                    </div>
+                    <div class="donut-wrapper" id="categoryChart"></div>
+                </div>
+            </div>
+
+            <!-- Top Urgent Medicines -->
+            <div class="card">
+                <div class="section-title">
+                    <span class="icon">🚨</span>
+                    Most Urgent Medicines
+                    <span class="badge badge-red">Priority Queue</span>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Medicine</th>
+                                <th>Facility</th>
+                                <th>Batch</th>
+                                <th>Qty</th>
+                                <th>Expiry</th>
+                                <th>Days Left</th>
+                                <th>Storage</th>
+                                <th>Class</th>
+                                <th>Urgency</th>
+                            </tr>
+                        </thead>
+                        <tbody id="urgentTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ PAGE: Transfers ═══ -->
+        <div class="page" id="page-transfers">
+            <div class="card mb-2">
+                <div class="section-title">
+                    <span class="icon">🔄</span>
+                    Recommended Transfers
+                    <span class="badge badge-teal" id="algo-label-badge">Bipartite Matching</span>
+                </div>
+                <p class="text-muted mb-2" style="font-size: 13px;">
+                    Optimal medicine transfers computed using graph-based algorithms. Each transfer
+                    minimizes wastage while respecting storage, regulatory, and distance constraints.
+                </p>
+            </div>
+
+            <div class="transfer-list" id="transferList">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <!-- ═══ PAGE: Facilities ═══ -->
+        <div class="page" id="page-facilities">
+            <div class="card mb-2">
+                <div class="section-title">
+                    <span class="icon">🏥</span>
+                    Healthcare Facilities
+                </div>
+                <p class="text-muted mb-2" style="font-size: 13px;">
+                    All registered facilities in the transport network. Click a card to view detailed inventory.
+                </p>
+            </div>
+            <div class="facility-grid" id="facilityGrid"></div>
+
+            <!-- Detail Modal -->
+            <div class="card mt-2" id="facilityDetail" style="display:none;">
+                <div class="section-title">
+                    <span class="icon">📋</span>
+                    <span id="facilityDetailName">Facility Inventory</span>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Medicine</th>
+                                <th>Batch</th>
+                                <th>Quantity</th>
+                                <th>Expiry</th>
+                                <th>Days Left</th>
+                                <th>Storage</th>
+                                <th>Value/Unit</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="facilityInventoryTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ PAGE: Network ═══ -->
+        <div class="page" id="page-network">
+            <div class="card">
+                <div class="section-title">
+                    <span class="icon">🌐</span>
+                    Transport Network Graph
+                    <span class="badge badge-blue">Weighted Edges</span>
+                </div>
+                <p class="text-muted mb-2" style="font-size: 13px;">
+                    Undirected weighted graph of healthcare facilities. Edge weights represent Haversine
+                    distance (km). Only facilities within 800km are connected.
+                </p>
+                <div class="network-canvas-wrapper">
+                    <canvas id="networkCanvas"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ PAGE: Heap ═══ -->
+        <div class="page" id="page-heap">
+            <div class="card">
+                <div class="section-title">
+                    <span class="icon">⏱️</span>
+                    Min-Heap — Expiry Priority Queue
+                    <span class="badge badge-amber">O(log n) operations</span>
+                </div>
+                <p class="text-muted mb-2" style="font-size: 13px;">
+                    Medicines ordered by urgency score (days-to-expiry × regulatory penalty).
+                    The root (rank #1) is the most urgent medicine needing redistribution.
+                </p>
+                <div class="heap-vis" id="heapVis"></div>
+            </div>
+        </div>
+
+        <!-- ═══ PAGE: Algorithms ═══ -->
+        <div class="page" id="page-algorithms">
+            <div class="card mb-2">
+                <div class="section-title">
+                    <span class="icon">⚡</span>
+                    Algorithm Comparison
+                </div>
+                <p class="text-muted mb-2" style="font-size: 13px;">
+                    Side-by-side comparison of <strong>Weighted Matching</strong> (benefit-ranked,
+                    capacity-aware) and <strong>Greedy Allocation</strong> (expiry-priority, faster).
+                </p>
+            </div>
+            <div class="algo-comparison" id="algoComparison">
+                <!-- Populated by JS -->
+            </div>
+
+            <div class="card mt-3">
+                <div class="section-title">
+                    <span class="icon">📘</span>
+                    DSA Concepts Used
+                </div>
+                <div class="grid-2 mt-2">
+                    <div class="card" style="border-color: var(--accent-teal-dim);">
+                        <h4 class="text-teal mb-1">🔺 Min-Heap</h4>
+                        <p class="text-muted" style="font-size: 13px; line-height: 1.7;">
+                            Priority queue that surfaces soonest-expiring medicines first.
+                            <strong>Push/Pop: O(log n)</strong>. Urgency = days × regulatory_penalty.
+                            Ensures we always process the most at-risk medicines before anything else.
+                        </p>
+                    </div>
+                    <div class="card" style="border-color: var(--accent-blue-dim);">
+                        <h4 class="text-blue mb-1">🌐 Weighted Graph</h4>
+                        <p class="text-muted" style="font-size: 13px; line-height: 1.7;">
+                            Transport network modeled as undirected graph. Edge weights combine
+                            Haversine distance + cold-chain multiplier + controlled-substance surcharge.
+                            Supports <strong>Dijkstra's shortest path</strong> for route optimization.
+                        </p>
+                    </div>
+                    <div class="card" style="border-color: var(--accent-purple-dim);">
+                        <h4 class="text-purple mb-1">🔗 Bipartite Matching</h4>
+                        <p class="text-muted" style="font-size: 13px; line-height: 1.7;">
+                            Left partition: (donor, medicine) surplus. Right partition: receiver demand.
+                            Feasible edges are ranked by net benefit, with stock and demand capacities
+                            enforced as assignments are made.
+                        </p>
+                    </div>
+                    <div class="card" style="border-color: var(--accent-amber-dim);">
+                        <h4 class="text-amber mb-1">🎯 Greedy Allocation</h4>
+                        <p class="text-muted" style="font-size: 13px; line-height: 1.7;">
+                            Process medicines in heap order (most urgent first). For each, find the
+                            nearest compatible receiver. <strong>O(n × m)</strong> time complexity.
+                            Faster but may miss globally optimal combinations.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script src="/app.js?v=2"></script>
+</body>
+</html>
