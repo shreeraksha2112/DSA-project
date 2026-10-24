@@ -21,6 +21,8 @@ MedRescue is a Flask-backed demonstration dashboard for reducing medicine expiry
 
 The Flask application serves the frontend and its `/api` endpoints from the same origin. The included facility, inventory, and demand data is generated for demonstration and held in memory; approved transfers update the running inventory and demand, and restarting the server restores the demo data.
 
+The Facilities page lets you add medicine batches, adjust on-hand quantities, and delete batches. Facility storage capabilities and controlled-medicine handling are validated before stock is accepted. The dashboard's Smart Stock Alerts highlight local demand gaps and batches expiring within 30 days, including the value at risk.
+
 ## Tests
 
 Run the API and transfer-flow tests with:
@@ -39,6 +41,10 @@ python -m unittest discover -s tests -v
 | `POST /api/transfers/{id}/approve` | Approves a recommendation and updates stock and demand |
 | `GET /api/facilities` | Facility summaries |
 | `GET /api/facilities/{id}` | Facility inventory and demand |
+| `POST /api/facilities/{id}/inventory` | Adds a validated medicine batch |
+| `PATCH /api/facilities/{id}/inventory/{medicine_id}` | Updates a batch's on-hand quantity |
+| `DELETE /api/facilities/{id}/inventory/{medicine_id}` | Deletes a medicine batch |
+| `GET /api/insights` | Reports local demand shortages and near-expiry stock |
 | `GET /api/network` | Transport graph nodes and edges |
 | `GET /api/heap-state` | Expiry-priority queue contents |
 | `GET /api/compare-algorithms` | Compares both recommendation strategies |

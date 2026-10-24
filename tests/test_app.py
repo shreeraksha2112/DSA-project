@@ -1,4 +1,5 @@
 import unittest
+from datetime import date, timedelta
 
 import app as medrescue_app
 from dsa_engine import MedRescueEngine
@@ -20,6 +21,8 @@ class MedRescueApiTests(unittest.TestCase):
 
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"MedRescue", page.data)
+        self.assertIn(b"Smart Stock Alerts", page.data)
+        self.assertIn(b'id="inventoryForm"', page.data)
         page.close()
         self.assertEqual(stats.status_code, 200)
         self.assertGreater(stats.json["total_facilities"], 0)
@@ -66,6 +69,124 @@ class MedRescueApiTests(unittest.TestCase):
         self.assertEqual(
             [item.id for item in active_transfers],
             [item["id"] for item in recommendations],
+        )
+
+    def test_inventory_can_be_added_adjusted_and_deleted(self):
+        facility = next(
+            item for item in medrescue_app.engine.graph.facilities.values()
+            if "ambient" in {condition.value for condition in item.storage_capabilities}
+        )
+        payload = {
+            "name": "Test Medicine",
+            "batch": "TEST-001",
+            "quantity": 24,
+            "expiry": (date.today() + timedelta(days=90)).isoformat(),
+            "storage": "ambient",
+            "category": "Test",
+            "unit_value": 2.5,
+            "regulatory_class": "OTC",
+        }
+
+        added = self.client.post(
+            f"/api/facilities/{facility.id}/inventory", json=payload
+        )
+
+        self.assertEqual(added.status_code, 201)
+        medicine_id = added.json["id"]
+        self.assertEqual(added.json["quantity"], 24)
+        self.assertTrue(
+            any(item.id == medicine_id for item in medrescue_app.engine.heap.to_sorted_list())
+        )
+
+        updated = self.client.patch(
+            f"/api/facilities/{facility.id}/inventory/{medicine_id}",
+            json={"quantity": 12},
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.json["quantity"], 12)
+
+        deleted = self.client.delete(
+            f"/api/facilities/{facility.id}/inventory/{medicine_id}"
+        )
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(
+            self.client.delete(
+                f"/api/facilities/{facility.id}/inventory/{medicine_id}"
+            ).status_code,
+            404,
+        )
+
+    def test_inventory_rejects_invalid_and_incompatible_stock(self):
+        facility = next(
+            item for item in medrescue_app.engine.graph.facilities.values()
+            if not item.can_handle_controlled
+        )
+        payload = {
+            "name": "Controlled Test",
+            "batch": "TEST-002",
+            "quantity": 1,
+            "expiry": (date.today() + timedelta(days=90)).isoformat(),
+            "storage": "ambient",
+            "category": "Test",
+            "unit_value": 2.5,
+            "regulatory_class": "Controlled",
+        }
+
+        response = self.client.post(
+            f"/api/facilities/{facility.id}/inventory", json=payload
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("controlled", response.json["error"])
+        payload["regulatory_class"] = "OTC"
+        payload["storage"] = "frozen"
+        response = self.client.post(
+            f"/api/facilities/{facility.id}/inventory", json=payload
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("store", response.json["error"])
+        payload["storage"] = "ambient"
+        payload["quantity"] = 0
+        self.assertEqual(
+            self.client.post(
+                f"/api/facilities/{facility.id}/inventory", json=payload
+            ).status_code,
+            400,
+        )
+        payload["quantity"] = 1
+        payload["regulatory_class"] = []
+        response = self.client.post(
+            f"/api/facilities/{facility.id}/inventory", json=payload
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Regulatory class", response.json["error"])
+        self.assertEqual(
+            self.client.post("/api/facilities/missing/inventory", json=payload).status_code,
+            404,
+        )
+
+    def test_smart_insights_report_local_shortages_and_expiring_lots(self):
+        facility = next(iter(medrescue_app.engine.graph.facilities.values()))
+        medicine = facility.inventory[0]
+        medicine.expiry = date.today() + timedelta(days=7)
+        facility.demand[medicine.name] = 100000
+
+        insights = self.client.get("/api/insights")
+
+        self.assertEqual(insights.status_code, 200)
+        self.assertTrue(
+            any(
+                item["facility_id"] == facility.id
+                and item["medicine_name"] == medicine.name
+                and item["shortage"] > 0
+                for item in insights.json["shortages"]
+            )
+        )
+        self.assertTrue(
+            any(
+                item["medicine_id"] == medicine.id
+                for item in insights.json["expiring_lots"]
+            )
         )
 
 

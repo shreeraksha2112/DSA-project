@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="MedRescue — Intelligent medicine redistribution system to reduce expiry waste across healthcare facilities">
     <title>MedRescue — Reduce Medicine Expiry Waste</title>
-    <link rel="stylesheet" href="/styles.css?v=2">
+    <link rel="stylesheet" href="/styles.css?v=3">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏥</text></svg>">
 </head>
 <body>
@@ -93,6 +93,24 @@
                 <!-- Populated by JS -->
             </div>
 
+            <div class="card">
+                <div class="section-title">
+                    <span class="icon">🧠</span>
+                    Smart Stock Alerts
+                    <span class="badge badge-amber">Demand + expiry insights</span>
+                </div>
+                <div class="smart-alert-grid">
+                    <section>
+                        <h3 class="alert-heading">Unmet local demand</h3>
+                        <div id="shortageAlerts" class="smart-alert-list"></div>
+                    </section>
+                    <section>
+                        <h3 class="alert-heading">Expiring within 30 days</h3>
+                        <div id="expiryAlerts" class="smart-alert-list"></div>
+                    </section>
+                </div>
+            </div>
+
             <div class="grid-2">
                 <!-- Expiry Timeline Chart -->
                 <div class="card">
@@ -171,6 +189,53 @@
                 <p class="text-muted mb-2" style="font-size: 13px;">
                     All registered facilities in the transport network. Click a card to view detailed inventory.
                 </p>
+                <form id="inventoryForm" class="inventory-form">
+                    <label class="form-field">
+                        <span>Facility</span>
+                        <select name="facility_id" id="inventoryFacility" required></select>
+                    </label>
+                    <label class="form-field">
+                        <span>Medicine name</span>
+                        <input name="name" required maxlength="80" placeholder="e.g. Amoxicillin">
+                    </label>
+                    <label class="form-field">
+                        <span>Batch number</span>
+                        <input name="batch" required maxlength="40" placeholder="e.g. AMX-2026-01">
+                    </label>
+                    <label class="form-field">
+                        <span>Quantity</span>
+                        <input name="quantity" type="number" min="1" step="1" required>
+                    </label>
+                    <label class="form-field">
+                        <span>Expiry date</span>
+                        <input name="expiry" type="date" required>
+                    </label>
+                    <label class="form-field">
+                        <span>Storage</span>
+                        <select name="storage" id="inventoryStorage" required>
+                            <option value="ambient">Ambient</option>
+                            <option value="refrigerated">Refrigerated</option>
+                            <option value="frozen">Frozen</option>
+                        </select>
+                    </label>
+                    <label class="form-field">
+                        <span>Category</span>
+                        <input name="category" required maxlength="40" placeholder="e.g. Antibiotic">
+                    </label>
+                    <label class="form-field">
+                        <span>Unit value ($)</span>
+                        <input name="unit_value" type="number" min="0" step="0.01" required>
+                    </label>
+                    <label class="form-field">
+                        <span>Regulatory class</span>
+                        <select name="regulatory_class" id="inventoryRegulatoryClass" required>
+                            <option value="OTC">OTC</option>
+                            <option value="Rx">Prescription (Rx)</option>
+                            <option value="Controlled">Controlled</option>
+                        </select>
+                    </label>
+                    <button type="submit" class="primary-button">Add medicine stock</button>
+                </form>
             </div>
             <div class="facility-grid" id="facilityGrid"></div>
 
@@ -192,6 +257,7 @@
                                 <th>Storage</th>
                                 <th>Value/Unit</th>
                                 <th>Status</th>
+                                <th>Manage stock</th>
                             </tr>
                         </thead>
                         <tbody id="facilityInventoryTable"></tbody>
@@ -294,6 +360,6 @@
     </main>
 </div>
 
-<script src="/app.js?v=2"></script>
+<script src="/app.js?v=3"></script>
 </body>
 </html>

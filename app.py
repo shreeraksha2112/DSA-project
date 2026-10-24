@@ -65,6 +65,48 @@ def facility_detail(fid):
     return jsonify(fac.to_dict(include_inventory=True))
 
 
+@app.route("/api/facilities/<fid>/inventory", methods=["POST"])
+def add_medicine(fid):
+    try:
+        medicine = engine.add_medicine(fid, request.get_json(silent=True))
+    except LookupError as error:
+        return jsonify({"error": str(error)}), 404
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    return jsonify(medicine), 201
+
+
+@app.route("/api/facilities/<fid>/inventory/<medicine_id>", methods=["PATCH"])
+def update_medicine_quantity(fid, medicine_id):
+    payload = request.get_json(silent=True)
+    quantity = payload.get("quantity") if isinstance(payload, dict) else None
+    try:
+        medicine = engine.update_medicine_quantity(fid, medicine_id, quantity)
+    except LookupError as error:
+        return jsonify({"error": str(error)}), 404
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    if medicine is None:
+        return jsonify({"error": "Medicine not found"}), 404
+    return jsonify(medicine)
+
+
+@app.route("/api/facilities/<fid>/inventory/<medicine_id>", methods=["DELETE"])
+def delete_medicine(fid, medicine_id):
+    try:
+        deleted = engine.delete_medicine(fid, medicine_id)
+    except LookupError as error:
+        return jsonify({"error": str(error)}), 404
+    if not deleted:
+        return jsonify({"error": "Medicine not found"}), 404
+    return jsonify({"status": "deleted", "medicine_id": medicine_id})
+
+
+@app.route("/api/insights")
+def inventory_insights():
+    return jsonify(engine.get_inventory_insights())
+
+
 # ── Network Graph ─────────────────────────────
 
 @app.route("/api/network")

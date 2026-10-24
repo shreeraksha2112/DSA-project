@@ -8,6 +8,8 @@
 const API = '';
 let currentAlgo = 'bipartite';
 let networkData = null;
+let facilitiesData = [];
+let activeFacilityId = null;
 
 // ───────────────────────────────────────────────
 //  Navigation
@@ -86,6 +88,7 @@ async function refreshData() {
             loadExpiryTimeline(),
             loadCategoryBreakdown(),
             loadUrgentTable(),
+            loadInsights(),
             loadTransfers(),
             loadFacilities(),
         ]);
@@ -223,7 +226,7 @@ async function loadCategoryBreakdown() {
     const legend = data.map((d, i) => `
         <div class="legend-item">
             <div class="legend-dot" style="background: ${colors[i % colors.length]};"></div>
-            <span>${d.category}</span>
+            <span>${escapeHtml(d.category)}</span>
             <span class="legend-value">${d.count.toLocaleString()}</span>
         </div>
     `).join('');
@@ -253,22 +256,52 @@ async function loadUrgentTable() {
     tbody.innerHTML = data.map((m, i) => {
         const daysClass = m.days_until_expiry <= 7 ? 'text-red' :
                           m.days_until_expiry <= 30 ? 'text-amber' : 'text-teal';
-        const storageClass = `storage-${m.storage}`;
+        const storageClass = `storage-${escapeHtml(m.storage)}`;
         return `
             <tr class="animate-in delay-${Math.min(i + 1, 5)}">
                 <td><span class="font-mono font-bold">${i + 1}</span></td>
-                <td><strong>${m.name}</strong></td>
-                <td class="text-muted">${m.facility}</td>
-                <td class="font-mono">${m.batch}</td>
+                <td><strong>${escapeHtml(m.name)}</strong></td>
+                <td class="text-muted">${escapeHtml(m.facility)}</td>
+                <td class="font-mono">${escapeHtml(m.batch)}</td>
                 <td>${m.quantity.toLocaleString()}</td>
-                <td class="font-mono">${m.expiry}</td>
+                <td class="font-mono">${escapeHtml(m.expiry)}</td>
                 <td><span class="${daysClass} font-bold">${m.days_until_expiry}d</span></td>
-                <td><span class="storage-badge ${storageClass}">${m.storage}</span></td>
-                <td><span class="badge ${m.regulatory_class === 'OTC' ? 'badge-teal' : m.regulatory_class === 'Rx' ? 'badge-blue' : 'badge-red'}">${m.regulatory_class}</span></td>
+                <td><span class="storage-badge ${storageClass}">${escapeHtml(m.storage)}</span></td>
+                <td><span class="badge ${m.regulatory_class === 'OTC' ? 'badge-teal' : m.regulatory_class === 'Rx' ? 'badge-blue' : 'badge-red'}">${escapeHtml(m.regulatory_class)}</span></td>
                 <td class="font-mono">${m.urgency_score}</td>
             </tr>
         `;
     }).join('');
+}
+
+async function loadInsights() {
+    const data = await fetchJSON('/api/insights');
+    const shortages = document.getElementById('shortageAlerts');
+    const expiring = document.getElementById('expiryAlerts');
+
+    shortages.innerHTML = data.shortages.length
+        ? data.shortages.slice(0, 5).map(item => `
+            <article class="smart-alert">
+                <div>
+                    <strong>${escapeHtml(item.medicine_name)} · ${escapeHtml(item.facility)}</strong>
+                    <small>${item.available_stock.toLocaleString()} on hand / ${item.demand.toLocaleString()} needed</small>
+                </div>
+                <span class="smart-alert-value">-${item.shortage.toLocaleString()} units</span>
+            </article>
+        `).join('')
+        : '<p class="text-muted">All facilities currently meet their recorded demand.</p>';
+
+    expiring.innerHTML = data.expiring_lots.length
+        ? data.expiring_lots.slice(0, 5).map(item => `
+            <article class="smart-alert">
+                <div>
+                    <strong>${escapeHtml(item.medicine_name)} · ${escapeHtml(item.facility)}</strong>
+                    <small>Batch ${escapeHtml(item.batch)} · ${escapeHtml(item.expiry)} · ${item.quantity.toLocaleString()} units</small>
+                </div>
+                <span class="smart-alert-value">${item.days_until_expiry}d<br>$${item.at_risk_value.toFixed(2)}</span>
+            </article>
+        `).join('')
+        : '<p class="text-muted">No active stock expires within 30 days.</p>';
 }
 
 // ───────────────────────────────────────────────
@@ -298,18 +331,18 @@ async function loadTransfers() {
         <div class="transfer-card animate-in delay-${Math.min(i + 1, 5)}">
             <div class="transfer-route">
                 <div class="transfer-facility">
-                    ${t.donor}
+                    ${escapeHtml(t.donor)}
                     <small>Donor</small>
                 </div>
                 <div class="transfer-arrow">→</div>
                 <div class="transfer-facility">
-                    ${t.receiver}
+                    ${escapeHtml(t.receiver)}
                     <small>Receiver</small>
                 </div>
             </div>
             <div class="transfer-med">
-                ${t.medicine_name}
-                <small>${t.quantity} units · ${t.batch} · <span class="storage-badge storage-${t.storage}">${t.storage}</span></small>
+                ${escapeHtml(t.medicine_name)}
+                <small>${t.quantity} units · ${escapeHtml(t.batch)} · <span class="storage-badge storage-${escapeHtml(t.storage)}">${escapeHtml(t.storage)}</span></small>
             </div>
             <div>
                 <span class="badge ${t.days_until_expiry <= 14 ? 'badge-red' : t.days_until_expiry <= 30 ? 'badge-amber' : 'badge-teal'}">
@@ -355,12 +388,15 @@ function switchAlgorithm(algo) {
 
 async function loadFacilities() {
     const data = await fetchJSON('/api/facilities');
+    facilitiesData = data;
     const grid = document.getElementById('facilityGrid');
+    const facilitySelect = document.getElementById('inventoryFacility');
+    const selectedFacility = facilitySelect.value;
 
     grid.innerHTML = data.map((f, i) => `
-        <div class="facility-card animate-in delay-${Math.min(i + 1, 5)}" onclick="loadFacilityDetail('${f.id}')">
-            <div class="facility-name">${f.name}</div>
-            <div class="facility-city">📍 ${f.city}</div>
+        <div class="facility-card animate-in delay-${Math.min(i + 1, 5)}" data-facility-id="${escapeHtml(f.id)}" role="button" tabindex="0">
+            <div class="facility-name">${escapeHtml(f.name)}</div>
+            <div class="facility-city">📍 ${escapeHtml(f.city)}</div>
             <div class="facility-stats">
                 <div class="fac-stat">
                     <div class="fac-stat-label">Stock</div>
@@ -380,15 +416,24 @@ async function loadFacilities() {
                 </div>
             </div>
             <div class="facility-tags">
-                ${f.storage_capabilities.map(s => `<span class="storage-badge storage-${s}">${s}</span>`).join('')}
+                ${f.storage_capabilities.map(s => `<span class="storage-badge storage-${escapeHtml(s)}">${escapeHtml(s)}</span>`).join('')}
                 ${f.can_handle_controlled ? '<span class="badge badge-red">Controlled</span>' : ''}
             </div>
         </div>
     `).join('');
+
+    facilitySelect.innerHTML = data.map(f =>
+        `<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)} · ${escapeHtml(f.city)}</option>`
+    ).join('');
+    if (data.some(f => f.id === selectedFacility)) {
+        facilitySelect.value = selectedFacility;
+    }
+    syncInventoryFormOptions();
 }
 
 async function loadFacilityDetail(fid) {
-    const f = await fetchJSON(`/api/facilities/${fid}`);
+    const f = await fetchJSON(`/api/facilities/${encodeURIComponent(fid)}`);
+    activeFacilityId = f.id;
     const detail = document.getElementById('facilityDetail');
     const title = document.getElementById('facilityDetailName');
     const tbody = document.getElementById('facilityInventoryTable');
@@ -404,19 +449,123 @@ async function loadFacilityDetail(fid) {
                        '<span class="badge badge-teal">Good</span>';
         return `
             <tr>
-                <td><strong>${m.name}</strong></td>
-                <td class="font-mono">${m.batch}</td>
+                <td><strong>${escapeHtml(m.name)}<small class="inventory-category">${escapeHtml(m.category)}</small></strong></td>
+                <td class="font-mono">${escapeHtml(m.batch)}</td>
                 <td>${m.quantity.toLocaleString()}</td>
-                <td class="font-mono">${m.expiry}</td>
+                <td class="font-mono">${escapeHtml(m.expiry)}</td>
                 <td><span class="${daysClass} font-bold">${m.days_until_expiry}d</span></td>
-                <td><span class="storage-badge storage-${m.storage}">${m.storage}</span></td>
+                <td><span class="storage-badge storage-${escapeHtml(m.storage)}">${escapeHtml(m.storage)}</span></td>
                 <td>$${m.unit_value.toFixed(2)}</td>
                 <td>${status}</td>
+                <td>
+                    <form class="stock-edit-form" data-medicine-id="${escapeHtml(m.id)}">
+                        <input name="quantity" type="number" min="1" step="1" value="${m.quantity}" aria-label="New quantity for ${escapeHtml(m.name)}" required>
+                        <button type="submit">Save</button>
+                        <button type="button" class="danger-button" data-delete-medicine="${escapeHtml(m.id)}" aria-label="Delete ${escapeHtml(m.name)}">Delete</button>
+                    </form>
+                </td>
             </tr>
         `;
     }).join('');
 
+    if (!f.inventory.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-muted">No medicine stock at this facility.</td></tr>';
+    }
     detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function syncInventoryFormOptions() {
+    const facility = facilitiesData.find(
+        item => item.id === document.getElementById('inventoryFacility').value
+    );
+    if (!facility) return;
+
+    const storageSelect = document.getElementById('inventoryStorage');
+    [...storageSelect.options].forEach(option => {
+        option.disabled = !facility.storage_capabilities.includes(option.value);
+    });
+    if (storageSelect.selectedOptions[0]?.disabled) {
+        storageSelect.value = facility.storage_capabilities[0];
+    }
+
+    const controlledOption = document.querySelector(
+        '#inventoryRegulatoryClass option[value="Controlled"]'
+    );
+    controlledOption.disabled = !facility.can_handle_controlled;
+    if (controlledOption.disabled && document.getElementById('inventoryRegulatoryClass').value === 'Controlled') {
+        document.getElementById('inventoryRegulatoryClass').value = 'Rx';
+    }
+}
+
+async function submitInventoryForm(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form).entries());
+    const facilityId = values.facility_id;
+    const payload = {
+        ...values,
+        quantity: Number(values.quantity),
+        unit_value: Number(values.unit_value),
+    };
+    delete payload.facility_id;
+
+    try {
+        await fetchJSON(`/api/facilities/${encodeURIComponent(facilityId)}/inventory`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        form.reset();
+        document.getElementById('inventoryFacility').value = facilityId;
+        syncInventoryFormOptions();
+        const refreshed = await refreshData();
+        if (!refreshed) return;
+        await loadFacilityDetail(facilityId);
+        showNotice('Medicine batch added; expiry alerts and transfer recommendations are updated.');
+    } catch (error) {
+        showNotice(error.message, true);
+    }
+}
+
+async function updateMedicineQuantity(event) {
+    event.preventDefault();
+    const form = event.target.closest('.stock-edit-form');
+    if (!form) return;
+    const facilityId = activeFacilityId;
+    if (!facilityId) return;
+    try {
+        await fetchJSON(
+            `/api/facilities/${encodeURIComponent(facilityId)}/inventory/${encodeURIComponent(form.dataset.medicineId)}`,
+            {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ quantity: Number(new FormData(form).get('quantity')) }),
+            }
+        );
+        const refreshed = await refreshData();
+        if (!refreshed) return;
+        await loadFacilityDetail(facilityId);
+        showNotice('Stock quantity updated.');
+    } catch (error) {
+        showNotice(error.message, true);
+    }
+}
+
+async function deleteMedicine(medicineId) {
+    const facilityId = activeFacilityId;
+    if (!facilityId || !window.confirm('Delete this medicine batch from inventory?')) return;
+    try {
+        await fetchJSON(
+            `/api/facilities/${encodeURIComponent(facilityId)}/inventory/${encodeURIComponent(medicineId)}`,
+            { method: 'DELETE' }
+        );
+        const refreshed = await refreshData();
+        if (!refreshed) return;
+        await loadFacilityDetail(facilityId);
+        showNotice('Medicine batch deleted.');
+    } catch (error) {
+        showNotice(error.message, true);
+    }
 }
 
 // ───────────────────────────────────────────────
@@ -537,9 +686,9 @@ async function loadHeap() {
         return `
             <div class="heap-node animate-in delay-${Math.min(i + 1, 5)}">
                 <div class="rank">${i + 1}</div>
-                <div class="med-name">${m.name}</div>
-                <div class="med-detail">${m.facility}</div>
-                <div class="med-detail">${m.days_until_expiry}d · ${m.quantity} units · ${m.storage}</div>
+                <div class="med-name">${escapeHtml(m.name)}</div>
+                <div class="med-detail">${escapeHtml(m.facility)}</div>
+                <div class="med-detail">${m.days_until_expiry}d · ${m.quantity} units · ${escapeHtml(m.storage)}</div>
                 <div class="urgency-bar">
                     <div class="urgency-fill" style="width: ${100 - pct}%; background: ${color};"></div>
                 </div>
@@ -604,6 +753,16 @@ function formatNumber(n) {
     return n.toFixed(0);
 }
 
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+    })[character]);
+}
+
 function showNotice(message, isError = false) {
     let notice = document.getElementById('appNotice');
     if (!notice) {
@@ -628,5 +787,33 @@ function hideNotice() {
 // ───────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
+    const expiryInput = document.querySelector('#inventoryForm [name="expiry"]');
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const firstValidExpiry = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 10);
+    expiryInput.min = firstValidExpiry;
+
+    document.getElementById('inventoryForm').addEventListener('submit', submitInventoryForm);
+    document.getElementById('inventoryFacility').addEventListener('change', syncInventoryFormOptions);
+    document.getElementById('facilityGrid').addEventListener('click', event => {
+        const card = event.target.closest('.facility-card');
+        if (card) {
+            loadFacilityDetail(card.dataset.facilityId).catch(error => showNotice(error.message, true));
+        }
+    });
+    document.getElementById('facilityGrid').addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const card = event.target.closest('.facility-card');
+        if (!card) return;
+        event.preventDefault();
+        loadFacilityDetail(card.dataset.facilityId).catch(error => showNotice(error.message, true));
+    });
+    document.getElementById('facilityInventoryTable').addEventListener('submit', updateMedicineQuantity);
+    document.getElementById('facilityInventoryTable').addEventListener('click', event => {
+        const button = event.target.closest('[data-delete-medicine]');
+        if (button) deleteMedicine(button.dataset.deleteMedicine);
+    });
     refreshData();
 });

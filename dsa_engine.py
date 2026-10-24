@@ -712,6 +712,166 @@ class MedRescueEngine:
         self.transfers.sort(key=lambda t: t.urgency)
         return self.transfers
 
+    def add_medicine(self, facility_id: str, details: dict) -> dict:
+        facility = self.graph.facilities.get(facility_id)
+        if facility is None:
+            raise LookupError("Facility not found.")
+        if not isinstance(details, dict):
+            raise ValueError("Medicine details must be an object.")
+
+        name = details.get("name")
+        batch = details.get("batch")
+        category = details.get("category")
+        quantity = details.get("quantity")
+        expiry_value = details.get("expiry")
+        storage_value = details.get("storage")
+        unit_value = details.get("unit_value")
+        regulatory_class = details.get("regulatory_class")
+
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Medicine name is required.")
+        if not isinstance(batch, str) or not batch.strip():
+            raise ValueError("Batch number is required.")
+        if not isinstance(category, str) or not category.strip():
+            raise ValueError("Category is required.")
+        if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity <= 0:
+            raise ValueError("Quantity must be a positive whole number.")
+        if not isinstance(expiry_value, str):
+            raise ValueError("Expiry must be a valid date.")
+        try:
+            expiry = date.fromisoformat(expiry_value)
+        except ValueError as error:
+            raise ValueError("Expiry must be a valid date in YYYY-MM-DD format.") from error
+        if expiry.isoformat() != expiry_value:
+            raise ValueError("Expiry must be a valid date in YYYY-MM-DD format.")
+        if expiry <= date.today():
+            raise ValueError("Expiry date must be in the future.")
+        if not isinstance(storage_value, str):
+            raise ValueError("Storage condition is required.")
+        try:
+            storage = StorageCondition(storage_value)
+        except ValueError as error:
+            raise ValueError("Storage must be ambient, refrigerated, or frozen.") from error
+        if storage not in facility.storage_capabilities:
+            raise ValueError("Facility cannot store medicine under this condition.")
+        if isinstance(unit_value, bool) or not isinstance(unit_value, (int, float)):
+            raise ValueError("Unit value must be a non-negative number.")
+        try:
+            unit_value = float(unit_value)
+        except OverflowError as error:
+            raise ValueError("Unit value must be a finite number.") from error
+        if not math.isfinite(unit_value) or unit_value < 0:
+            raise ValueError("Unit value must be a non-negative number.")
+        if not isinstance(regulatory_class, str) or regulatory_class not in {
+            "OTC", "Rx", "Controlled"
+        }:
+            raise ValueError("Regulatory class must be OTC, Rx, or Controlled.")
+        if regulatory_class == "Controlled" and not facility.can_handle_controlled:
+            raise ValueError("Facility cannot handle controlled medicines.")
+
+        medicine = Medicine(
+            id=uuid.uuid4().hex,
+            name=name.strip(),
+            batch=batch.strip(),
+            quantity=quantity,
+            expiry=expiry,
+            storage=storage,
+            category=category.strip(),
+            unit_value=unit_value,
+            regulatory_class=regulatory_class,
+        )
+        facility.inventory.append(medicine)
+        self._refresh_inventory_state()
+        return medicine.to_dict()
+
+    def update_medicine_quantity(
+        self, facility_id: str, medicine_id: str, quantity: object
+    ) -> Optional[dict]:
+        facility = self.graph.facilities.get(facility_id)
+        if facility is None:
+            raise LookupError("Facility not found.")
+        if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity <= 0:
+            raise ValueError("Quantity must be a positive whole number.")
+
+        medicine = next(
+            (item for item in facility.inventory if item.id == medicine_id),
+            None,
+        )
+        if medicine is None:
+            return None
+        medicine.quantity = quantity
+        self._refresh_inventory_state()
+        return medicine.to_dict()
+
+    def delete_medicine(self, facility_id: str, medicine_id: str) -> bool:
+        facility = self.graph.facilities.get(facility_id)
+        if facility is None:
+            raise LookupError("Facility not found.")
+        medicine = next(
+            (item for item in facility.inventory if item.id == medicine_id),
+            None,
+        )
+        if medicine is None:
+            return False
+        facility.inventory.remove(medicine)
+        self._refresh_inventory_state()
+        return True
+
+    def _refresh_inventory_state(self) -> None:
+        self._build_heap()
+        self.run_bipartite_matching()
+
+    def get_inventory_insights(self) -> dict:
+        shortages = []
+        expiring_lots = []
+
+        for facility in self.graph.facilities.values():
+            available_by_medicine: Dict[str, int] = defaultdict(int)
+            for medicine in facility.inventory:
+                if medicine.quantity <= 0 or medicine.is_expired:
+                    continue
+                available_by_medicine[medicine.name] += medicine.quantity
+                if medicine.days_until_expiry <= 30:
+                    expiring_lots.append({
+                        "facility_id": facility.id,
+                        "facility": facility.name,
+                        "medicine_id": medicine.id,
+                        "medicine_name": medicine.name,
+                        "batch": medicine.batch,
+                        "quantity": medicine.quantity,
+                        "expiry": medicine.expiry.isoformat(),
+                        "days_until_expiry": medicine.days_until_expiry,
+                        "at_risk_value": round(medicine.quantity * medicine.unit_value, 2),
+                    })
+
+            for medicine_name, demand in facility.demand.items():
+                shortage = demand - available_by_medicine[medicine_name]
+                if shortage > 0:
+                    shortages.append({
+                        "facility_id": facility.id,
+                        "facility": facility.name,
+                        "medicine_name": medicine_name,
+                        "demand": demand,
+                        "available_stock": available_by_medicine[medicine_name],
+                        "shortage": shortage,
+                    })
+
+        shortages.sort(key=lambda item: (-item["shortage"], item["facility"], item["medicine_name"]))
+        expiring_lots.sort(
+            key=lambda item: (item["days_until_expiry"], item["facility"], item["medicine_name"])
+        )
+        return {
+            "shortages": shortages,
+            "expiring_lots": expiring_lots,
+            "summary": {
+                "shortage_count": len(shortages),
+                "expiring_lot_count": len(expiring_lots),
+                "at_risk_value": round(
+                    sum(item["at_risk_value"] for item in expiring_lots), 2
+                ),
+            },
+        }
+
     def get_dashboard_stats(self) -> dict:
         total_meds = 0
         total_value = 0.0
